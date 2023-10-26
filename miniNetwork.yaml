@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Part 1 - Build a webapp stack with CloudFormation
+Description: "Build a stack with CloudFormation for the miniNetwork"
 Parameters:
   EnvironmentType:
     Description: "Specify the Environment type of the stack"
@@ -9,14 +9,38 @@ Parameters:
       - dev
       - test
       - prod
+  ImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+Mappings:
+  EnvironmentToInstanceType:
+    dev:
+      InstanceType: t2.micro
+    test:
+      InstanceType: t2.micro
+    prod:
+      InstanceType: t2.small
+
 Resources:
   WebAppInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-0f3164307ee5d695a
-      InstanceType: t2.micro
+      ImageId: !Ref ImageId
+      InstanceType:
+        !FindInMap [
+          EnvironmentToInstanceType,
+          !Ref EnvironmentType,
+          InstanceType,
+        ]
       SecurityGroupIds:
         - !Ref WebAppSecurityGroup
+      Tags:
+        - Key: Name
+          Value: miniNetwork
+        - Key: stage
+          Value: !Ref EnvironmentType
+        - Key: project
+          Value: Iac
 
   WebAppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
