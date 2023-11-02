@@ -42,7 +42,28 @@ Mappings:
       InstanceType: t2.small
 
 Resources:
-  WebAppInstance:
+  BackendAppInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType:
+        !FindInMap [
+          EnvironmentToInstanceType,
+          !Ref EnvironmentType,
+          InstanceType,
+        ]
+      SecurityGroupIds:
+        - !Ref BackendSecurityGroup
+      SubnetId: PrivateSubnet
+      Tags:
+        - Key: Name
+          Value: miniNetwork
+        - Key: stage
+          Value: !Ref EnvironmentType
+        - Key: App
+          Value: BackendAppInstance
+
+  FrontEndAppInstance:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref ImageId
@@ -54,39 +75,23 @@ Resources:
         ]
       SecurityGroupIds:
         - !Ref WebAppSecurityGroup
+      SubnetId: PublicSubnet
       Tags:
         - Key: Name
           Value: miniNetwork
         - Key: stage
           Value: !Ref EnvironmentType
-        - Key: project
-          Value: Iac
-
-  WebAppSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: !Join ["-", [webapp-security-group, !Ref EnvironmentType]]
-      GroupDescription: "Allow HTTP/HTTPS and SSH inbound and outbound traffic"
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-
+        - Key: App
+          Value: FrontEndAppInstance
   WebAppDatabase:
     Type: AWS::RDS::DBInstance
     Properties:
       DBInstanceIdentifier: !Ref DBInstanceIdentifier
       AllocatedStorage: "5"
       DBInstanceClass: db.t3.micro
+      SubnetId: PrivateSubnet
+      SecurityGroupIds:
+        - !Ref DataBaseSecurityGroup
       Engine: postgres
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Ref DBPassword
@@ -97,9 +102,12 @@ Resources:
     UpdateReplacePolicy: Snapshot
 
 Outputs:
-  WebServerPublicDNS:
-    Description: "Public DNS of EC2 instance"
-    Value: !GetAtt WebAppInstance.PublicDnsName
+  WebBackendServerPublicDNS:
+    Description: "Public DNS of Backend EC2 instance"
+    Value: !GetAtt BackendAppInstance.PublicDnsName
+  WebFrontEndServerPublicDNS:
+    Description: "Public DNS of Backend EC2 instance"
+    Value: !GetAtt FrontEndAppInstance.PublicDnsName
   WebAppDatabaseEndpoint:
     Description: "Connection endpoint for the database"
     Value: !GetAtt WebAppDatabase.Endpoint.Address

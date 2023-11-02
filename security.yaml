@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "Creating security for the miniNetwork"
+Resources:
+  WebAppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join [ "-", [ webapp-security-group, !Ref EnvironmentType ] ]
+      GroupDescription: "Allow HTTP/HTTPS and SSH inbound and outbound traffic"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: 8
+          ToPort: -1
+          CidrIp: 10.0.0.0/16
+  DataBaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Data Base SecurityGroup
+      GroupName: DataBaseSecurityGroup
+      VpcId: !ImportValue  VpcMiniNetwork
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt WebAppSecurityGroup.GroupId
+  BackendSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !ImportValue  VpcMiniNetwork
+      GroupName: BackendSecurityGroup
+      GroupDescription: Enable HTTP/HTTPS access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+  FrontendSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !ImportValue  VpcMiniNetwork
+      GroupName: FrontendSecurityGroup
+      GroupDescription: Enable HTTP/HTTPS access
+      SecurityGroupIngress:
+        - IpProtocol: icmp
+          FromPort: 8
+          ToPort: -1
+          CidrIp: 10.0.0.0/16
+  VpcLinkSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !ImportValue  VpcMiniNetwork
+      GroupName: VpcSG
+      GroupDescription: Enable HTTP/HTTPS access
+      SecurityGroupIngress:
+        - IpProtocol: 'tcp'
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: 'tcp'
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+  ExConnALBSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !ImportValue  VpcMiniNetwork
+      GroupName: InternalSG
+      GroupDescription: Enable HTTP/HTTPS access
+      SecurityGroupIngress:
+        - IpProtocol: 'tcp'
+          FromPort: '80'
+          ToPort: '80'
+          SourceSecurityGroupId: !GetAtt VpcLinkSecurityGroup.GroupId
+        - IpProtocol: 'tcp'
+          FromPort: '443'
+          ToPort: '443'
+          SourceSecurityGroupId: !GetAtt VpcLinkSecurityGroup.GroupId
