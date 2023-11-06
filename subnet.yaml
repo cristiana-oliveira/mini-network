@@ -1,8 +1,6 @@
-AWSTemplateFormatVersion: 2010-09-09
-Description: "Creating subnet for the miniNetwork"
 Resources:
   # VPC
-  VpcMiniNetwork:
+  MiniNetworkVPC:
     Type: AWS::EC2::VPC
     Properties:
       CidrBlock: 10.0.0.0/16
@@ -15,7 +13,7 @@ Resources:
     Properties:
       CidrBlock: 10.0.1.0/24
       AvailabilityZone: !Select [ 0, Fn::GetAZs: !Ref  'AWS::Region' ]
-      VpcId: !Ref  VpcMiniNetwork
+      VpcId: !Ref  MiniNetworkVPC
       Tags:
         - Key: Name
           Value: PrivateSubnet
@@ -25,7 +23,7 @@ Resources:
       CidrBlock: 10.0.4.0/24
       MapPublicIpOnLaunch: True
       AvailabilityZone: !Select [ 1, Fn::GetAZs: !Ref  'AWS::Region' ]
-      VpcId: !Ref  VpcMiniNetwork
+      VpcId: !Ref  MiniNetworkVPC
       Tags:
         - Key: Name
           Value: PublicSubnet
@@ -39,23 +37,23 @@ Resources:
   VpcGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      VpcId: !Ref  InternetGateway
-      InternetGatewayId: !Ref  VpcMiniNetwork
+      VpcId: !Ref MiniNetworkVPC
+      InternetGatewayId: !Ref InternetGateway
   #Route Table Configurations
   PubRouteTable:
-      Type: AWS::EC2::RouteTable
-      Properties:
-        Tags:
-          - Key: Name
-            Value: PubRoute
-        VpcId: !Ref  VpcMiniNetwork
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: PubRoute
+      VpcId: !Ref  MiniNetworkVPC
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       Tags:
         - Key: Name
           Value: PriRoute
-      VpcId: !Ref  VpcMiniNetwork
+      VpcId: !Ref  MiniNetworkVPC
     #Subnet to Route Table associations
   PubSubRouteAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -71,9 +69,15 @@ Resources:
   InternetGatewayRoute:
     Type: AWS::EC2::Route
     Properties:
-      DestinationCidrBlock:  0.0.0.0/0
+      DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
       RouteTableId: !Ref  PubRouteTable
+  # ELASTIC IP
+  NatPublicIP:
+    Type: AWS::EC2::EIP
+    DependsOn: MiniNetworkVPC
+    Properties:
+      Domain: vpc
   # NAT GATEWAY
   NatGateway:
     Type: AWS::EC2::NatGateway
@@ -87,26 +91,19 @@ Resources:
       NatGatewayId: !Ref NatGateway
       RouteTableId: !Ref PrivateRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      # ELASTIC IP
-  NatPublicIP:
-    Type: AWS::EC2::EIP
-    DependsOn: PubPrivateVPC
-    Properties:
-      Domain: vpc
-#Output resources
 Outputs:
   #VPC
-  StackVpc:
-    Description:  Details about vpc
-    Value:  !Ref  VpcMiniNetwork
+  MiniNetworkVPC:
+    Description: Details about vpc
+    Value: !Ref  MiniNetworkVPC
     Export:
-      Name: VpcMiniNetwork
-  PrivateSubnet:
+      Name: MiniNetworkVPC
+  PrivateSubnetOut:
     Description: Output of the private internal subnet
     Value: !Ref  PrivateSubnet
     Export:
       Name: PrivateSubnet
-  PublicSubnet:
+  PublicSubnetOut:
     Description: Output of the Public subnet
     Value: !Ref  PublicSubnet
     Export:

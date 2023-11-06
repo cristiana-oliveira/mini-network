@@ -42,6 +42,135 @@ Mappings:
       InstanceType: t2.small
 
 Resources:
+  # VPC
+  MiniNetworkVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Sub  ${AWS::StackName}
+  # SUBNETS
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [ 0, Fn::GetAZs: !Ref  'AWS::Region' ]
+      VpcId: !Ref  MiniNetworkVPC
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.4.0/24
+      MapPublicIpOnLaunch: True
+      AvailabilityZone: !Select [ 1, Fn::GetAZs: !Ref  'AWS::Region' ]
+      VpcId: !Ref  MiniNetworkVPC
+      Tags:
+        - Key: Name
+          Value: PublicSubnet
+  # INTERNET GATEWAY
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub  ${AWS::StackName}-Gateway
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MiniNetworkVPC
+      InternetGatewayId: !Ref InternetGateway
+  #Route Table Configurations
+  PubRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: PubRoute
+      VpcId: !Ref  MiniNetworkVPC
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: PriRoute
+      VpcId: !Ref  MiniNetworkVPC
+    #Subnet to Route Table associations
+  PubSubRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref  PubRouteTable
+      SubnetId: !Ref  PublicSubnet
+  InternalAppRouteAss:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref  PrivateRouteTable
+      SubnetId: !Ref  PrivateSubnet
+  #Routes Configuration
+  InternetGatewayRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref  PubRouteTable
+  # ELASTIC IP
+  NatPublicIP:
+    Type: AWS::EC2::EIP
+    DependsOn: MiniNetworkVPC
+    Properties:
+      Domain: vpc
+  # NAT GATEWAY
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: NatPublicIP
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      AllocationId: !GetAtt NatPublicIP.AllocationId
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      NatGatewayId: !Ref NatGateway
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+  DataBaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Data Base SecurityGroup
+      GroupName: DataBaseSecurityGroup
+      VpcId: !Ref  MiniNetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+  BackendSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref MiniNetworkVPC
+      GroupName: BackendSecurityGroup
+      GroupDescription: Enable HTTP/HTTPS access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+  FrontendSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref MiniNetworkVPC
+      GroupName: FrontendSecurityGroup
+      GroupDescription: Enable HTTP/HTTPS access
+      SecurityGroupIngress:
+        - IpProtocol: icmp
+          FromPort: 8
+          ToPort: -1
+          CidrIp: 10.0.0.0/8
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
   BackendAppInstance:
     Type: AWS::EC2::Instance
     Properties:
@@ -54,7 +183,7 @@ Resources:
         ]
       SecurityGroupIds:
         - !Ref BackendSecurityGroup
-      SubnetId: PrivateSubnet
+      SubnetId: !Ref PrivateSubnet
       Tags:
         - Key: Name
           Value: miniNetwork
@@ -62,7 +191,6 @@ Resources:
           Value: !Ref EnvironmentType
         - Key: App
           Value: BackendAppInstance
-
   FrontEndAppInstance:
     Type: AWS::EC2::Instance
     Properties:
@@ -74,8 +202,8 @@ Resources:
           InstanceType,
         ]
       SecurityGroupIds:
-        - !Ref WebAppSecurityGroup
-      SubnetId: PublicSubnet
+        - !Ref FrontendSecurityGroup
+      SubnetId: !Ref PublicSubnet
       Tags:
         - Key: Name
           Value: miniNetwork
@@ -89,9 +217,6 @@ Resources:
       DBInstanceIdentifier: !Ref DBInstanceIdentifier
       AllocatedStorage: "5"
       DBInstanceClass: db.t3.micro
-      SubnetId: PrivateSubnet
-      SecurityGroupIds:
-        - !Ref DataBaseSecurityGroup
       Engine: postgres
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Ref DBPassword
@@ -104,10 +229,32 @@ Resources:
 Outputs:
   WebBackendServerPublicDNS:
     Description: "Public DNS of Backend EC2 instance"
-    Value: !GetAtt BackendAppInstance.PublicDnsName
+    Value: !Ref BackendAppInstance
+    Export:
+      Name: WebBackendServerPublicDNS
   WebFrontEndServerPublicDNS:
     Description: "Public DNS of Backend EC2 instance"
-    Value: !GetAtt FrontEndAppInstance.PublicDnsName
+    Value: !Ref FrontEndAppInstance
+    Export:
+      Name: WebFrontEndServerPublicDNS
   WebAppDatabaseEndpoint:
     Description: "Connection endpoint for the database"
-    Value: !GetAtt WebAppDatabase.Endpoint.Address
+    Value: !Ref WebAppDatabase
+    Export:
+      Name: WebAppDatabaseEndpoint
+  #VPC
+  MiniNetworkVPC:
+    Description: Details about vpc
+    Value: !Ref  MiniNetworkVPC
+    Export:
+      Name: MiniNetworkVPC
+  PrivateSubnetOut:
+    Description: Output of the private internal subnet
+    Value: !Ref  PrivateSubnet
+    Export:
+      Name: PrivateSubnet
+  PublicSubnetOut:
+    Description: Output of the Public subnet
+    Value: !Ref  PublicSubnet
+    Export:
+      Name: PublicSubnet
