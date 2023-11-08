@@ -32,6 +32,12 @@ Parameters:
     MaxLength: "41"
     AllowedPattern: "[a-zA-Z0-9]*"
     ConstraintDescription: Must contain only alphanumeric characters.
+  AwsAccessKey:
+    Description: Aws access key
+    Type: String
+  AwsSecretAccessKey:
+    Description: Aws Secret Access key
+    Type: String
 Mappings:
   EnvironmentToInstanceType:
     dev:
@@ -145,33 +151,52 @@ Resources:
           FromPort: 3306
           ToPort: 3306
           CidrIp: 0.0.0.0/0
-  BackendSecurityGroup:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  MyAppSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       VpcId: !Ref MiniNetworkVPC
-      GroupName: BackendSecurityGroup
+      GroupName: MyAppSecurityGroup
       GroupDescription: Enable HTTP/HTTPS access
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
           CidrIp: 0.0.0.0/0
-  FrontendSecurityGroup:
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  BastionSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       VpcId: !Ref MiniNetworkVPC
-      GroupName: FrontendSecurityGroup
+      GroupName: BastionSecurityGroup
       GroupDescription: Enable HTTP/HTTPS access
       SecurityGroupIngress:
-        - IpProtocol: icmp
-          FromPort: 8
-          ToPort: -1
-          CidrIp: 10.0.0.0/8
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
           CidrIp: 0.0.0.0/0
-  BackendAppInstance:
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  MyAppInstance:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref ImageId
@@ -182,16 +207,29 @@ Resources:
           InstanceType,
         ]
       SecurityGroupIds:
-        - !Ref BackendSecurityGroup
+        - !Ref MyAppSecurityGroup
       SubnetId: !Ref PrivateSubnet
+      UserData:
+        Fn::Base64:
+          !Sub |
+           #!/bin/bash
+           yum update -y
+           chmod +x /home/ec2-user/ .
+           chmod +x /home/ec2-user/.ssh/authorized_keys
+           cd /home/ec2-user/.ssh/
+           echo 'Test' > /home/ec2-user/.ssh/test.txt
+           sudo rm /home/ec2-user/.ssh/authorized_keys
+           echo ${AWS::Region} ${AwsAccessKey} ${AwsSecretAccessKey}
+           echo $USER
+           AWS_ACCESS_KEY_ID=${AwsAccessKey} AWS_SECRET_ACCESS_KEY=${AwsSecretAccessKey} aws s3 --region ${AWS::Region} cp s3://mininetwork/authorized_keys /home/ec2-user/.ssh/authorized_keys
       Tags:
         - Key: Name
           Value: miniNetwork
         - Key: stage
           Value: !Ref EnvironmentType
         - Key: App
-          Value: BackendAppInstance
-  FrontEndAppInstance:
+          Value: MyAppInstance
+  BastionInstance:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref ImageId
@@ -202,15 +240,26 @@ Resources:
           InstanceType,
         ]
       SecurityGroupIds:
-        - !Ref FrontendSecurityGroup
+        - !Ref BastionSecurityGroup
       SubnetId: !Ref PublicSubnet
+      UserData:
+       Fn::Base64:
+         !Sub |
+           #!/bin/bash
+           chmod +x /home/ec2-user/ .
+           chmod +x /home/ec2-user/.ssh/authorized_keys
+           cd /home/ec2-user/.ssh/
+           sudo rm /home/ec2-user/.ssh/authorized_keys
+           AWS_ACCESS_KEY_ID=${AwsAccessKey} AWS_SECRET_ACCESS_KEY=${AwsSecretAccessKey} aws s3 --region ${AWS::Region} cp s3://mininetwork/authorized_keys /home/ec2-user/.ssh/authorized_keys
       Tags:
         - Key: Name
           Value: miniNetwork
         - Key: stage
           Value: !Ref EnvironmentType
         - Key: App
-          Value: FrontEndAppInstance
+          Value: BastionInstance
+        - Key: Test
+          Value: ${AwsAccessKey} ${AwsSecretAccessKey} ${AWS::Region}
   WebAppDatabase:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -229,12 +278,12 @@ Resources:
 Outputs:
   WebBackendServerPublicDNS:
     Description: "Public DNS of Backend EC2 instance"
-    Value: !Ref BackendAppInstance
+    Value: !Ref MyAppInstance
     Export:
       Name: WebBackendServerPublicDNS
   WebFrontEndServerPublicDNS:
     Description: "Public DNS of Backend EC2 instance"
-    Value: !Ref FrontEndAppInstance
+    Value: !Ref BastionInstance
     Export:
       Name: WebFrontEndServerPublicDNS
   WebAppDatabaseEndpoint:
