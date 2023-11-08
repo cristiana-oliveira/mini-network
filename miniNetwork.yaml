@@ -150,11 +150,11 @@ Resources:
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
-          CidrIp: 0.0.0.0/0
+          CidrIp: 10.0.1.0/24
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
+          CidrIp: 10.0.1.0/24
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443
@@ -170,7 +170,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
+          CidrIp: 10.0.4.0/24
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443
@@ -186,7 +186,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
+          CidrIp: 37.228.207.116/32
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 22
@@ -213,14 +213,10 @@ Resources:
         Fn::Base64:
           !Sub |
            #!/bin/bash
-           yum update -y
            chmod +x /home/ec2-user/ .
            chmod +x /home/ec2-user/.ssh/authorized_keys
            cd /home/ec2-user/.ssh/
-           echo 'Test' > /home/ec2-user/.ssh/test.txt
            sudo rm /home/ec2-user/.ssh/authorized_keys
-           echo ${AWS::Region} ${AwsAccessKey} ${AwsSecretAccessKey}
-           echo $USER
            AWS_ACCESS_KEY_ID=${AwsAccessKey} AWS_SECRET_ACCESS_KEY=${AwsSecretAccessKey} aws s3 --region ${AWS::Region} cp s3://mininetwork/authorized_keys /home/ec2-user/.ssh/authorized_keys
       Tags:
         - Key: Name
